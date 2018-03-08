@@ -328,7 +328,7 @@ class ZiyuLogging(object):
     记录调试和校验日志
     """
     @staticmethod
-    def config(logger = logging.getLogger("ZiyuLogging"),path = './'):
+    def config(logger,path):
         """日志配置
         :param logger:创建Logging对象
         :return:None
@@ -339,11 +339,11 @@ class ZiyuLogging(object):
         file_handler = logging.FileHandler(path+'ziyu_mode.log',encoding='utf8')
         file_handler.setFormatter(formatter)  # 可以通过setFormatter指定输出格式
         # 控制台日志
-        console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.formatter = formatter  # 也可以直接给formatter赋值
+        #console_handler = logging.StreamHandler(sys.stdout)
+        #console_handler.formatter = formatter  # 也可以直接给formatter赋值
         # 为logger添加的日志处理器
         logger.addHandler(file_handler)
-        logger.addHandler(console_handler)
+        #logger.addHandler(console_handler)
         # 指定日志的最低输出级别，默认为WARN级别
         logger.setLevel(logging.INFO)
 
@@ -371,8 +371,9 @@ def data_trans(row):
     return data
 
 if __name__ == "__main__":
-    home_path = 'E:/MyPro/FuzhuPaidanModel_pyspark1.6.1/'
-    #home_path = '/user/znyw/zxzjt/FuzhuPaidanModel_pyspark1.6.1/'
+    #home_path = 'E:/MyPro/FuzhuPaidanModel_pyspark1.6.1/'
+    home_path = '/user/znyw/zxzjt/FuzhuPaidanModel_pyspark1.6.1/'
+    home_path_local = '/home/znyw/zhujingtao/FuzhuPaidanModel_pyspark1.6.1/'
     sc = SparkContext(appName="FuzhuPaidan")
     data_types = [StructField('地市', StringType(), True), StructField('区县', StringType(), True),
                   StructField('网元要素', StringType(), True), StructField('数据来源', StringType(), True),
@@ -397,24 +398,24 @@ if __name__ == "__main__":
     #model.write().overwrite().save(model_path)
     train_proc_label_point = train_proc.rdd.map(lambda row:LabeledPoint(row['label'],row['features']))
     model = RandomForest.trainClassifier(train_proc_label_point, numClasses=2, categoricalFeaturesInfo={},numTrees=100, featureSubsetStrategy="onethird",impurity='gini', maxDepth=8,seed=20)
-    model.save(sc,model_path)
+    #model.save(sc,model_path)
 
     # 实际部署
     # 日志开启
-    ZiyuLogging.config(logger=logging.getLogger("ZiyuLogging"),path=home_path)
+    ZiyuLogging.config(logger=logging.getLogger("ZiyuLogging"),path=home_path_local)
     logger = logging.getLogger("ZiyuLogging")
     # 创建校验
     data_checker = DataChecker()
     nan_fill_data = pre_proc.mean_mode
     # 数据目录
     data_dir = home_path+'test_dir/'
-    res_dir = data_dir+'res/'
+    res_dir = home_path+'res/'
     cmd1 = 'hdfs dfs -ls -R ' + data_dir
     # 加载模型
     #model_load = RandomForestClassificationModel.load(model_path)
-    model_load = RandomForestModel.load(sc,model_path)
+    model_load = model #RandomForestModel.load(sc,model_path)
     while True:
-        files_list = subprocess.check_output(cmd1.split(),shell=True).strip().split(b'\r\n')
+        files_list = subprocess.check_output(cmd1.split()).strip().split(b'\n')#shell=True for win 7, and '\r\n'
         if len(files_list) == 0:
             pass
         else:
@@ -453,7 +454,7 @@ if __name__ == "__main__":
                             res_named = res.withColumnRenamed('问题归类(一级)', '问题归类_一级').withColumnRenamed('问题归类(二级)', '问题归类_二级').withColumnRenamed('日均流量(GB)', '日均流量_GB')
                             res_named.write.parquet(path=res_dir+file_name+'.res',mode='overwrite')
                             cmd2 = 'hdfs dfs -mv '+data_dir+file_name+ ' '+data_dir+file_name+'.back'
-                            subprocess.check_output(cmd2.split(), shell=True)
+                            subprocess.check_output(cmd2.split())#shell=True for win 7
                             time.sleep(5)
                             # train_pred = model_load.transform(train_proc).select(['prediction','label']).rdd.map(lambda row:(row['prediction'],row['label']))
                             # metrics = MulticlassMetrics(train_pred)
