@@ -1,0 +1,2 @@
+2018-03-03 15:14:13,968 INFO gongdan_ziyu_model.py:221 - exception_keys
+2018-03-03 15:14:13,969 INFO gongdan_ziyu_model.py:222 - ['告警触发次数', '日均流量(GB)', '资管生命周期状态']
