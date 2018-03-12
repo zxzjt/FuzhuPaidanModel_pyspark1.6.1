@@ -386,7 +386,7 @@ if __name__ == "__main__":
                   StructField('日均流量(GB)', DoubleType(), True), StructField('业务要素', StringType(), True),
                   StructField('场景要素', StringType(), True), StructField('覆盖类型', StringType(), True),
                   StructField('覆盖场景', StringType(), True),StructField('自恢复状态', StringType(), True)]
-    train_rdd = sc.textFile(home_path+'train.txt').map(lambda line:line.split('\r\n')).map(data_trans)
+    train_rdd = sc.textFile(home_path+'train.txt',use_unicode=False).map(lambda line:line.split('\r\n')).map(data_trans)
     sqlContext = SQLContext(sc)
     data_all = sqlContext.createDataFrame(train_rdd,StructType(data_types))
     model_path = home_path+"model"
@@ -429,7 +429,7 @@ if __name__ == "__main__":
                     res_list = []
                     file_name = file.split(b'/')[-1].decode('utf-8')
                     # test_data = spark.read.csv(path=data_dir + file_name, encoding='gbk', header=True, inferSchema=True)
-                    test_rdd = sc.textFile(data_dir + file_name).map(lambda line: line.split('\r\n')).map(data_trans)
+                    test_rdd = sc.textFile(data_dir + file_name,use_unicode=False).map(lambda line: line.split('\r\n')).map(data_trans)
                     test_data = sqlContext.createDataFrame(test_rdd,StructType(data_types[0:-1]))
                     # 添加简单校验规则
                     data_status = data_checker.data_check(test_data, nan_fill_data)
