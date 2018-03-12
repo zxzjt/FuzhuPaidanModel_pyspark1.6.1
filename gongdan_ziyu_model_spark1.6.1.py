@@ -371,7 +371,8 @@ def data_trans(row):
     return data
 
 if __name__ == "__main__":
-    #home_path = 'E:/MyPro/FuzhuPaidanModel_pyspark1.6.1/'
+    #home_path = 'E:/MyPro/FuzhuPaidanModel_pyspark_test/'
+    #home_path_local = 'E:/MyPro/FuzhuPaidanModel_pyspark_test/'
     home_path = '/user/znyw/zxzjt/FuzhuPaidanModel_pyspark1.6.1/'
     home_path_local = '/home/znyw/zhujingtao/FuzhuPaidanModel_pyspark1.6.1/'
     sc = SparkContext(appName="FuzhuPaidan")
@@ -424,6 +425,7 @@ if __name__ == "__main__":
                 pass
             else:
                 for file in csv_files:
+                    start_time = time.time()
                     res_list = []
                     file_name = file.split(b'/')[-1].decode('utf-8')
                     # test_data = spark.read.csv(path=data_dir + file_name, encoding='gbk', header=True, inferSchema=True)
@@ -455,7 +457,9 @@ if __name__ == "__main__":
                             res_named.write.parquet(path=res_dir+file_name+'.res',mode='overwrite')
                             cmd2 = 'hdfs dfs -mv '+data_dir+file_name+ ' '+data_dir+file_name+'.back'
                             subprocess.check_output(cmd2.split())#shell=True for win 7
-                            time.sleep(5)
+                            time.sleep(1)
+                    end_time = time.time()
+                    logger.info('%s takes %s s' % (file_name,str(end_time-start_time)))
                             # train_pred = model_load.transform(train_proc).select(['prediction','label']).rdd.map(lambda row:(row['prediction'],row['label']))
                             # metrics = MulticlassMetrics(train_pred)
                             # print(metrics.confusionMatrix().toArray())
