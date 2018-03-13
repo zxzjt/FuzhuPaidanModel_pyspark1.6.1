@@ -2,6 +2,7 @@
 # coding: utf8
 import logging,sys,os
 import subprocess,time
+import csv
 
 from pyspark import SQLContext,SparkContext,SparkConf
 from pyspark.sql.types import *
@@ -173,12 +174,30 @@ class DataChecker(object):
         data_filled = data.na.fill(nan_fill_data)
         return data_filled
 
-    def data_check(self, data, nan_fill_data):
+    def exception_process(self,row):
+        data = []
+        # 数值类型判断
+        for key in DataChecker.keys_num:
+            if (row[key] == '') or (float(row[key]) < DataChecker.std_data_values[key][0]) or (
+                float(row[key]) > DataChecker.std_data_values[key][1]):
+                data.append(None)
+            else:
+                data.append(float(row[key]))
+        # 标称字段判断
+        for key in DataChecker.keys_class:
+            if row[key] == '' or row[key] not in DataChecker.std_data_values[key]:
+                data.append(None)
+            else:
+                data.append(row[key])
+        return data
+
+    def data_check(self, data, sql_context, nan_fill_data):
         """数据校验
         根据预设的范围判断数据是否异常，先对数据空值填充，再校验
         :param data:待校验的数据
+        :param sql_context:sql_context
         :param nan_fill_data:各字段默认的填充值
-        :return:数据状态
+        :return:填充的数据
         """
         logger = logging.getLogger("ZiyuLogging")
         self.item_num = data.count()
@@ -202,29 +221,10 @@ class DataChecker(object):
                 return (2,[])
             else:
                 self.missing_keys = []
-                data_filled = self.__null_process(data, nan_fill_data)
-                # 数值是否在合理范围
-                for key in DataChecker.keys_num:
-                    if data_filled.filter((data_filled[key] < DataChecker.std_data_values[key][0])
-                            | (data_filled[key] > DataChecker.std_data_values[key][1])).count() > 0:
-                        self.data_exception_keys.append(key)
-                    else:
-                        pass
-                # 标称字段是否集合元素
-                for key in DataChecker.keys_class:
-                    temp_values = set(data_filled.select(data_filled[key]).rdd.map(lambda x: x[key]).collect())
-                    is_value_in = [value in DataChecker.std_data_values[key] for value in temp_values]
-                    if False in is_value_in:
-                        self.data_exception_keys.append(key)
-                    else:
-                        pass
-                if len(self.data_exception_keys) != 0:
-                    # print(self.data_exception_keys)
-                    logger.info('exception_keys')
-                    logger.info(self.data_exception_keys)
-                    return (3,data_filled)
-                else:
-                    return (0,data_filled)
+                checked_rdd = data.rdd.map(self.exception_process)
+                data_df_null = sql_context.createDataFrame(checked_rdd,DataChecker.keys_num+DataChecker.keys_class)
+                data_filled = self.__null_process(data_df_null, nan_fill_data)
+                return (0,data_filled)
 
 class ZiyuDataPreProc(object):
     """工单自恢复分类器
@@ -357,18 +357,18 @@ class ZiyuLogging(object):
         logger = logging.getLogger("OtherLogging")
         logger.error("Test OtherLogging")
 
-def data_trans(row):
+def data_trans(row_list):
     data = []
-    row_list = row[0].split('\t')
     for i in range(len(row_list)):
         if i == 12 or i == 13:
-            if (row_list[i] != None) or (row_list[i] != ''):
-                data.append(float(row_list[i]))
-            else:
-                data.append(None)
+            data.append(float(row_list[i]))
         else:
             data.append(row_list[i])
     return data
+
+def trans_to_csv(row):
+    s = ','.join(str(row[key]) for key in test_header+["predictedLabel"])
+    return s+'\n'
 
 if __name__ == "__main__":
     #home_path = 'E:/MyPro/FuzhuPaidanModel_pyspark_test/'
@@ -376,22 +376,14 @@ if __name__ == "__main__":
     home_path = '/user/znyw/zxzjt/FuzhuPaidanModel_pyspark1.6.1/'
     home_path_local = '/home/znyw/zhujingtao/FuzhuPaidanModel_pyspark1.6.1/'
     sc = SparkContext(appName="FuzhuPaidan")
-    data_types = [StructField('地市', StringType(), True), StructField('区县', StringType(), True),
-                  StructField('网元要素', StringType(), True), StructField('数据来源', StringType(), True),
-                  StructField('问题归类(一级)', StringType(), True), StructField('问题归类(二级)', StringType(), True),
-                  StructField('类别要素', StringType(), True), StructField('处理优先级', StringType(), True),
-                  StructField('目前状态', StringType(), True),
-                  StructField('是否指纹库智能分析系统运算', StringType(), True), StructField('是否质检通过', StringType(), True),
-                  StructField('资管生命周期状态', StringType(), True), StructField('告警触发次数', DoubleType(), True),
-                  StructField('日均流量(GB)', DoubleType(), True), StructField('业务要素', StringType(), True),
-                  StructField('场景要素', StringType(), True), StructField('覆盖类型', StringType(), True),
-                  StructField('覆盖场景', StringType(), True),StructField('自恢复状态', StringType(), True)]
-    train_rdd = sc.textFile(home_path+'train.txt',use_unicode=False).map(lambda line:line.split('\r\n')).map(data_trans)
+    train_all = sc.textFile(home_path+'train.csv',use_unicode=True).map(lambda line: line.split(","))
+    train_header = train_all.collect()[0]
+    train_rdd = train_all.filter(lambda line: line[0] != train_header[0]).map(data_trans)
     sqlContext = SQLContext(sc)
-    data_all = sqlContext.createDataFrame(train_rdd,StructType(data_types))
+    train_df = sqlContext.createDataFrame(train_rdd,train_header)
     model_path = home_path+"model"
     #data_all = sqlContext.read.format("com.databricks.spark.csv").option('header',True).load(path='./train.txt')
-    train = data_all
+    train = train_df
     pre_proc = ZiyuDataPreProc()
     train_proc = pre_proc.data_fit_transform(train)
     #rf = RandomForestClassifier(labelCol="label", featuresCol="features", maxDepth=10,numTrees=100,featureSubsetStrategy='onethird',seed=10)
@@ -420,7 +412,7 @@ if __name__ == "__main__":
         if len(files_list) == 0:
             pass
         else:
-            csv_files = [x for x in files_list if x.endswith(b".txt")]
+            csv_files = [x for x in files_list if x.endswith(b".csv")]
             if len(csv_files) == 0:
                 pass
             else:
@@ -429,11 +421,14 @@ if __name__ == "__main__":
                     res_list = []
                     file_name = file.split(b'/')[-1].decode('utf-8')
                     # test_data = spark.read.csv(path=data_dir + file_name, encoding='gbk', header=True, inferSchema=True)
-                    test_rdd = sc.textFile(data_dir + file_name,use_unicode=False).map(lambda line: line.split('\r\n')).map(data_trans)
-                    test_data = sqlContext.createDataFrame(test_rdd,StructType(data_types[0:-1]))
+                    test_all = sc.textFile(data_dir + file_name,use_unicode=True).map(lambda line: line.split(","))
+                    test_header = test_all.first()
+                    test_rdd = test_all.filter(lambda line: line[0] != test_header[0])
+                    test_data = sqlContext.createDataFrame(test_rdd,test_header)
+                    test_data_ava = test_data.select(DataChecker.keys_num+DataChecker.keys_class)
                     # 添加简单校验规则
-                    data_status = data_checker.data_check(test_data, nan_fill_data)
-                    if data_status[0] != 0 and data_status[0] != 3:
+                    data_status = data_checker.data_check(test_data_ava, sqlContext, nan_fill_data)
+                    if data_status[0] != 0:
                         pass
                     else:
                         trans_test = pre_proc.data_transform(data_status[1])
@@ -453,8 +448,12 @@ if __name__ == "__main__":
                             res_df = sqlContext.createDataFrame(res_list,test_data_cols+["prediction"])
                             labelConverter = IndexToString(inputCol="prediction", outputCol="predictedLabel",labels=pre_proc.encoder4_model.labels)
                             res = labelConverter.transform(res_df)
-                            res_named = res.withColumnRenamed('问题归类(一级)', '问题归类_一级').withColumnRenamed('问题归类(二级)', '问题归类_二级').withColumnRenamed('日均流量(GB)', '日均流量_GB')
-                            res_named.write.parquet(path=res_dir+file_name+'.res',mode='overwrite')
+                            res.limit(5).show()
+                            # 使用spark写parquet文件
+                            #res_named = res.withColumnRenamed('问题归类(一级)', '问题归类_一级').withColumnRenamed('问题归类(二级)', '问题归类_二级').withColumnRenamed('日均流量(GB)', '日均流量_GB')
+                            #res_named.write.parquet(path=res_dir+file_name+'.res',mode='overwrite')
+                            # trans_to_csv
+                            res.rdd.repartition(1).map(trans_to_csv).saveAsTextFile(res_dir+file_name+'.res')
                             cmd2 = 'hdfs dfs -mv '+data_dir+file_name+ ' '+data_dir+file_name+'.back'
                             subprocess.check_output(cmd2.split())#shell=True for win 7
                             time.sleep(1)
