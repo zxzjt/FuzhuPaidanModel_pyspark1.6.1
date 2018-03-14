@@ -174,19 +174,20 @@ class DataChecker(object):
         data_filled = data.na.fill(nan_fill_data)
         return data_filled
 
-    def exception_process(self,row):
+    def __exception_process(self,row):
         data = []
         # 数值类型判断
         for key in DataChecker.keys_num:
-            if (row[key] == '') or (float(row[key]) < DataChecker.std_data_values[key][0]) or (
-                float(row[key]) > DataChecker.std_data_values[key][1]):
-                data.append(None)
+            if (row[key] == '') or (float(row[key]) < DataChecker.std_data_values[key][0]) or (float(row[key]) > DataChecker.std_data_values[key][1]):
+                data.append(1000)
+                self.exception_keys.add(key)
             else:
                 data.append(float(row[key]))
         # 标称字段判断
         for key in DataChecker.keys_class:
             if row[key] == '' or row[key] not in DataChecker.std_data_values[key]:
                 data.append(None)
+                self.exception_keys.add(key)
             else:
                 data.append(row[key])
         return data
@@ -216,14 +217,16 @@ class DataChecker(object):
                     pass
             if len(self.missing_keys) != 0:
                 # print(self.missing_keys)
-                logger.info('missing_keys')
-                logger.info(self.missing_keys)
+                logger.info('missing_keys: '+', '.join(self.missing_keys))
                 return (2,[])
             else:
                 self.missing_keys = []
-                checked_rdd = data.rdd.map(self.exception_process)
+                self.exception_keys = set()
+                checked_rdd = data.rdd.map(lambda row: self.__exception_process(row))
                 data_df_null = sql_context.createDataFrame(checked_rdd,DataChecker.keys_num+DataChecker.keys_class)
                 data_filled = self.__null_process(data_df_null, nan_fill_data)
+                if len(self.exception_keys) != 0:
+                    logger.info('exception_keys: '+', '.join(self.exception_keys))
                 return (0,data_filled)
 
 class ZiyuDataPreProc(object):
@@ -366,7 +369,7 @@ def data_trans(row_list):
             data.append(row_list[i])
     return data
 
-def trans_to_csv(row):
+def trans_to_csv(row,test_header):
     s = ','.join(str(row[key]) for key in test_header+["predictedLabel"])
     return s+'\n'
 
@@ -375,28 +378,35 @@ if __name__ == "__main__":
     #home_path_local = 'E:/MyPro/FuzhuPaidanModel_pyspark_test/'
     home_path = '/user/znyw/zxzjt/FuzhuPaidanModel_pyspark1.6.1/'
     home_path_local = '/home/znyw/zhujingtao/FuzhuPaidanModel_pyspark1.6.1/'
+    # 日志开启
+    ZiyuLogging.config(logger=logging.getLogger("ZiyuLogging"), path=home_path_local)
+    logger = logging.getLogger("ZiyuLogging")
+    # 创建sc
     sc = SparkContext(appName="FuzhuPaidan")
     train_all = sc.textFile(home_path+'train.csv',use_unicode=True).map(lambda line: line.split(","))
+    logger.info('train: sc.textFile')
     train_header = train_all.collect()[0]
-    train_rdd = train_all.filter(lambda line: line[0] != train_header[0]).map(data_trans)
+    train_rdd = train_all.filter(lambda line: line[0] != train_header[0]).map(lambda row:data_trans(row))
     sqlContext = SQLContext(sc)
     train_df = sqlContext.createDataFrame(train_rdd,train_header)
+    logger.info('train: sqlContext.createDataFrame')
     model_path = home_path+"model"
     #data_all = sqlContext.read.format("com.databricks.spark.csv").option('header',True).load(path='./train.txt')
     train = train_df
     pre_proc = ZiyuDataPreProc()
     train_proc = pre_proc.data_fit_transform(train)
+    logger.info('train: pre_proc.data_fit_transform')
     #rf = RandomForestClassifier(labelCol="label", featuresCol="features", maxDepth=10,numTrees=100,featureSubsetStrategy='onethird',seed=10)
     #model = rf.fit(train_proc)
     #model.write().overwrite().save(model_path)
     train_proc_label_point = train_proc.rdd.map(lambda row:LabeledPoint(row['label'],row['features']))
+    logger.info('train: generate train_proc_label_point')
     model = RandomForest.trainClassifier(train_proc_label_point, numClasses=2, categoricalFeaturesInfo={},numTrees=100, featureSubsetStrategy="onethird",impurity='gini', maxDepth=8,seed=20)
+    logger.info('train: trainClassifier')
     #model.save(sc,model_path)
+    logger.info('train: model.save')
 
-    # 实际部署
-    # 日志开启
-    ZiyuLogging.config(logger=logging.getLogger("ZiyuLogging"),path=home_path_local)
-    logger = logging.getLogger("ZiyuLogging")
+    ## 实际部署
     # 创建校验
     data_checker = DataChecker()
     nan_fill_data = pre_proc.mean_mode
@@ -407,6 +417,7 @@ if __name__ == "__main__":
     # 加载模型
     #model_load = RandomForestClassificationModel.load(model_path)
     model_load = model #RandomForestModel.load(sc,model_path)
+    logger.info('train: model.load')
     while True:
         files_list = subprocess.check_output(cmd1.split()).strip().split(b'\n')#shell=True for win 7, and '\r\n'
         if len(files_list) == 0:
@@ -420,24 +431,30 @@ if __name__ == "__main__":
                     start_time = time.time()
                     res_list = []
                     file_name = file.split(b'/')[-1].decode('utf-8')
+                    logger.info('test: get csv file, %s' % file_name)
                     # test_data = spark.read.csv(path=data_dir + file_name, encoding='gbk', header=True, inferSchema=True)
                     test_all = sc.textFile(data_dir + file_name,use_unicode=True).map(lambda line: line.split(","))
+                    logger.info('test: sc.textFile, %s' % file_name)
                     test_header = test_all.first()
                     test_rdd = test_all.filter(lambda line: line[0] != test_header[0])
                     test_data = sqlContext.createDataFrame(test_rdd,test_header)
+                    logger.info('test: sqlContext.createDataFrame, %s' % file_name)
                     test_data_ava = test_data.select(DataChecker.keys_num+DataChecker.keys_class)
                     # 添加简单校验规则
                     data_status = data_checker.data_check(test_data_ava, sqlContext, nan_fill_data)
+                    logger.info('test: data_checker.data_check, %s' % file_name)
                     if data_status[0] != 0:
-                        pass
+                        logger.info('test: data_status[0] is %s exception, %s' % (str(data_status[0]),file_name))
                     else:
                         trans_test = pre_proc.data_transform(data_status[1])
                         if trans_test == []:
-                            logger.info('ZiyuDataPreProc: data_transform exception!')
+                            logger.info('test: pre_proc.data_transform exception, %s' % file_name)
                             pass
                         else:
                             trans_test_label_point = trans_test.rdd.map(lambda row: row['features'])
+                            logger.info('test: generate trans_test_label_point, %s' % file_name)
                             predicter_collect = model_load.predict(trans_test_label_point).collect()
+                            logger.info('test: model_load.predict, %s' % file_name)
                             test_data_collect = test_data.collect()
                             test_data_cols = test_data.columns
                             for i in range(test_data.count()):
@@ -446,19 +463,23 @@ if __name__ == "__main__":
                                 row.append(predicter_collect[i])
                                 res_list.append(row)
                             res_df = sqlContext.createDataFrame(res_list,test_data_cols+["prediction"])
+                            logger.info('test: test_data append prediction column , %s' % file_name)
                             labelConverter = IndexToString(inputCol="prediction", outputCol="predictedLabel",labels=pre_proc.encoder4_model.labels)
                             res = labelConverter.transform(res_df)
+                            logger.info('test: prediction column IndexToString, %s' % file_name)
                             res.limit(5).show()
                             # 使用spark写parquet文件
                             #res_named = res.withColumnRenamed('问题归类(一级)', '问题归类_一级').withColumnRenamed('问题归类(二级)', '问题归类_二级').withColumnRenamed('日均流量(GB)', '日均流量_GB')
                             #res_named.write.parquet(path=res_dir+file_name+'.res',mode='overwrite')
                             # trans_to_csv
-                            res.rdd.repartition(1).map(trans_to_csv).saveAsTextFile(res_dir+file_name+'.res')
+                            res.rdd.repartition(1).map(lambda row:trans_to_csv(row,test_header)).saveAsTextFile(res_dir+file_name+'.res')
+                            logger.info('test: result output to csv, %s' % file_name)
                             cmd2 = 'hdfs dfs -mv '+data_dir+file_name+ ' '+data_dir+file_name+'.back'
                             subprocess.check_output(cmd2.split())#shell=True for win 7
+                            logger.info('test: rename origin .csv file to .back, %s' % file_name)
                             time.sleep(1)
                     end_time = time.time()
-                    logger.info('%s takes %s s' % (file_name,str(end_time-start_time)))
+                    logger.info('predition takes %s s, %s' % (str(end_time-start_time),file_name))
                             # train_pred = model_load.transform(train_proc).select(['prediction','label']).rdd.map(lambda row:(row['prediction'],row['label']))
                             # metrics = MulticlassMetrics(train_pred)
                             # print(metrics.confusionMatrix().toArray())
