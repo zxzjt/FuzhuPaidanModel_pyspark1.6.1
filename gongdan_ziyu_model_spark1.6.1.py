@@ -179,7 +179,7 @@ class DataChecker(object):
         # 数值类型判断
         for key in DataChecker.keys_num:
             if (row[key] == '') or (float(row[key]) < DataChecker.std_data_values[key][0]) or (float(row[key]) > DataChecker.std_data_values[key][1]):
-                data.append(1000)
+                data.append(None)
                 self.exception_keys.add(key)
             else:
                 data.append(float(row[key]))
