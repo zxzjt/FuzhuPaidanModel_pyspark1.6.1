@@ -180,14 +180,14 @@ class DataChecker(object):
         for key in DataChecker.keys_num:
             if (row[key] == '') or (float(row[key]) < DataChecker.std_data_values[key][0]) or (float(row[key]) > DataChecker.std_data_values[key][1]):
                 data.append(None)
-                self.exception_keys.add(key)
+                #self.exception_keys.add(key)
             else:
                 data.append(float(row[key]))
         # 标称字段判断
         for key in DataChecker.keys_class:
             if row[key] == '' or row[key] not in DataChecker.std_data_values[key]:
                 data.append(None)
-                self.exception_keys.add(key)
+                #self.exception_keys.add(key)
             else:
                 data.append(row[key])
         return data
@@ -221,12 +221,12 @@ class DataChecker(object):
                 return (2,[])
             else:
                 self.missing_keys = []
-                self.exception_keys = set()
+                #self.exception_keys = set()
                 checked_rdd = data.rdd.map(lambda row: self.__exception_process(row))
                 data_df_null = sql_context.createDataFrame(checked_rdd,DataChecker.keys_num+DataChecker.keys_class)
                 data_filled = self.__null_process(data_df_null, nan_fill_data)
-                if len(self.exception_keys) != 0:
-                    logger.info('exception_keys: '+', '.join(self.exception_keys))
+                #if len(self.exception_keys) != 0:
+                #    logger.info('exception_keys: '+', '.join(self.exception_keys))
                 return (0,data_filled)
 
 class ZiyuDataPreProc(object):
