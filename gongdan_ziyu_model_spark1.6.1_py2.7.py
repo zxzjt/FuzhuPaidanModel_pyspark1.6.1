@@ -19,6 +19,7 @@ from pyspark.mllib.evaluation import MulticlassMetrics
 """python 2 编码总结
 sc.textFile读入utf8文件，设置use_unicode=True，用sqlContext.createDateFrame后字段名columns为utf8的str类型，取值为unicode类型
 用select时使用utf8或unicode作字段名都可以，collect后的Row类型只能使用utf8取其value
+vector元素为np.float64类型，需用float显式转换后才能转到DoubleType
 """
 
 class MultiLabelEncoder(object):
@@ -480,7 +481,7 @@ if __name__ == "__main__":
     model_load = model #RandomForestModel.load(sc,model_path)
     logger.info('train: model.load')
     while True:
-        files_list = subprocess.check_output(cmd1.split()).strip().split(b'\n')#shell=True for win 7, and '\r\n'
+        files_list = subprocess.check_output(cmd1.split(),shell=False).strip().split(b'\n')#shell=True for win 7, and '\r\n'
         if len(files_list) == 0:
             pass
         else:
@@ -539,16 +540,19 @@ if __name__ == "__main__":
                             predicter = model_load.transform(trans_test)
                             logger.info('test: model_load.transform, %s' % file_name)
                             labelConverter = IndexToString(inputCol="prediction", outputCol="predictedLabel",labels=pre_proc.encoder4_model.labels)
-                            res = labelConverter.transform(predicter).select(DataChecker.id_str+["prediction", "predictedLabel"])
+                            res_rdd = labelConverter.transform(predicter).select(DataChecker.id_str+["prediction", "predictedLabel", 'probability']).map(lambda row:[row[DataChecker.id_str[0]],row["prediction"],row["predictedLabel"],float(row['probability'][1])])
+                            res= sqlContext.createDataFrame(res_rdd,StructType([StructField(DataChecker.id_str[0],StringType(),True),StructField("prediction",DoubleType(),True),
+                                                                               StructField("predictedLabel",StringType(),True), StructField('probability',DoubleType(),True)]))
+                            #res.limit(5).show()
                             logger.info('test: prediction column IndexToString, %s' % file_name)
                             logger.info('test: prediction column IndexToString labels, %s' % pre_proc.encoder4_model.labels)
                             #logger.info('test: columns of res are %s' % res.columns)
                             logger.info('test: res item_num %s, feature_num %s' % (res.count(),len(res.columns)))
-                            join_columns = [test_data[key] for key in test_data.columns]+[res["prediction"],res["predictedLabel"]]
+                            join_columns = [test_data[key] for key in test_data.columns]+[res["prediction"],res["predictedLabel"],res["probability"]]
                             res_join = test_data.join(res,test_data[DataChecker.id_str[0]]==res[DataChecker.id_str[0]],'left_outer').select(join_columns)
                             #logger.info('test: columns of res_join are %s' % res_join.columns)
                             logger.info('test: res_join item_num %s, feature_num %s' % (res_join.count(), len(res_join.columns)))
-                            res_join.limit(10).show()
+                            #res_join.limit(5).show()
                             # 使用spark写parquet文件
                             #res_named = res.withColumnRenamed('问题归类(一级)', '问题归类_一级').withColumnRenamed('问题归类(二级)', '问题归类_二级').withColumnRenamed('日均流量(GB)', '日均流量_GB')
                             #res_named.write.parquet(path=res_dir+file_name+'.res',mode='overwrite')
