@@ -107,7 +107,7 @@ class DataChecker(object):
     data_exception_keys数据异常的字段
     """
     # 使用的指标字段
-    id = [u'序号']
+    id = [u'问题点编号']
     id_str = [key.encode('utf8') for key in id]
     keys_class = [ u'地市', u'区县',u'网元要素', u'数据来源',u'问题归类(一级)',u'问题归类(二级)',
                   u'类别要素',u'处理优先级',u'目前状态',u'是否指纹库智能分析系统运算',
