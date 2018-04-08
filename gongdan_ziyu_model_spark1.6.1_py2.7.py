@@ -473,14 +473,39 @@ if __name__ == "__main__":
     data_checker = DataChecker()
     nan_fill_data = pre_proc.mean_mode
     # 数据目录
+    streamsets_dir = '/user/rc_znpd/zxzjt/wenti_data/'
     data_dir = home_path+'test_dir/'
+    back_dir = home_path+'back_dir/'
     res_dir = home_path+'res/'
     cmd1 = 'hdfs dfs -ls -R ' + data_dir
+    cmd3 = 'hdfs dfs -ls -R ' + streamsets_dir
     # 加载模型
     #model_load = RandomForestClassificationModel.load(model_path)
     model_load = model #RandomForestModel.load(sc,model_path)
     logger.info('train: model.load')
     while True:
+        # files transmission
+        try:
+            files_list_trans = subprocess.check_output(cmd3.split(), shell=False).strip().split(b'\n')
+        except:
+            logger.info('cmd3 error')
+        else:
+            files_list_trans = [file for file in files_list_trans if not file.startswith(b'd')]
+            if len(files_list_trans) == 0:
+                pass
+            else:
+                for file in files_list_trans:
+                    file_name_trans = file.split(b'/')[-1]
+                    cmd4 = 'hdfs dfs -mv ' + streamsets_dir + file_name_trans + ' ' + data_dir + file_name_trans + '.csv'
+                    try:
+                        subprocess.check_output(cmd4.split(),shell=False)  # shell=True for win 7
+                    except:
+                        logger.info('cmd4 hdfs dfs -mv error, %s' % file_name_trans)
+                    else:
+                        logger.info('test: cmd4 hdfs dfs -mv to .csv, %s' % file_name_trans)
+                        time.sleep(2)
+                        pass
+        # process test_dir files
         files_list = subprocess.check_output(cmd1.split(),shell=False).strip().split(b'\n')#shell=True for win 7, and '\r\n'
         if len(files_list) == 0:
             pass
@@ -560,10 +585,14 @@ if __name__ == "__main__":
                             #res.rdd.repartition(1).map(lambda row:trans_to_csv(row,test_header)).saveAsTextFile(res_dir+file_name+'.res')
                             res_join.repartition(1).write.json(res_dir+file_name+'.res','overwrite')
                             logger.info('test: result output, %s' % file_name)
-                            cmd2 = 'hdfs dfs -mv '+data_dir+file_name+ ' '+data_dir+file_name+'.back'
-                            subprocess.check_output(cmd2.split())#shell=True for win 7
-                            logger.info('test: rename origin .csv file to .back, %s' % file_name)
-                            time.sleep(1)
+                            cmd2 = 'hdfs dfs -mv '+data_dir+file_name+ ' '+back_dir+file_name+'.back'
+                            try:
+                                subprocess.check_output(cmd2.split(),shell=False)#shell=True for win 7
+                            except:
+                                logger.info('cmd2 error')
+                            else:
+                                logger.info('test: rename origin .csv file to .back, %s' % file_name)
+                                time.sleep(2)
                     end_time = time.time()
                     logger.info('predition takes %s s, %s' % (str(end_time-start_time),file_name))
                             # train_pred = model_load.transform(train_proc).select(['prediction','label']).rdd.map(lambda row:(row['prediction'],row['label']))
