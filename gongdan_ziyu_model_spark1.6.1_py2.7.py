@@ -431,8 +431,8 @@ if __name__ == "__main__":
     #sys.setdefaultencoding('utf8')
     #home_path = 'E:/MyPro/FuzhuPaidanModel_pyspark_test/'
     #home_path_local = 'E:/MyPro/FuzhuPaidanModel_pyspark_test/'
-    home_path = '/user/znyw/zxzjt/FuzhuPaidanModel_pyspark1.6.1/'
-    home_path_local = '/home/znyw/zhujingtao/FuzhuPaidanModel_pyspark1.6.1/'
+    home_path = '/user/rc_znpd/zxzjt/FuzhuPaidanModel_pyspark1.6.1/'
+    home_path_local = '/home/rc_znpd/zxzjt/FuzhuPaidanModel_pyspark1.6.1/'
     # 日志开启
     ZiyuLogging.config(logger=logging.getLogger("ZiyuLogging"), path=home_path_local)
     logger = logging.getLogger("ZiyuLogging")
