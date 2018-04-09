@@ -2,7 +2,7 @@
 # coding: utf8
 import logging,sys,os
 import subprocess,time
-import csv
+import pandas as pd
 
 from pyspark import SQLContext,SparkContext,SparkConf
 from pyspark.sql.types import *
@@ -477,6 +477,7 @@ if __name__ == "__main__":
     data_dir = home_path+'test_dir/'
     back_dir = home_path+'back_dir/'
     res_dir = home_path+'res/'
+    res_dir_local = home_path_local+'res/'
     cmd1 = 'hdfs dfs -ls -R ' + data_dir
     cmd3 = 'hdfs dfs -ls -R ' + streamsets_dir
     # 加载模型
@@ -492,6 +493,7 @@ if __name__ == "__main__":
         else:
             files_list_trans = [file for file in files_list_trans if not file.startswith(b'd')]
             if len(files_list_trans) == 0:
+                time.sleep(2)
                 pass
             else:
                 for file in files_list_trans:
@@ -508,10 +510,12 @@ if __name__ == "__main__":
         # process test_dir files
         files_list = subprocess.check_output(cmd1.split(),shell=False).strip().split(b'\n')#shell=True for win 7, and '\r\n'
         if len(files_list) == 0:
+            time.sleep(2)
             pass
         else:
             csv_files = [x for x in files_list if x.endswith(b".csv")]
             if len(csv_files) == 0:
+                time.sleep(2)
                 pass
             else:
                 for file in csv_files:
@@ -584,12 +588,14 @@ if __name__ == "__main__":
                             # trans_to_csv
                             #res.rdd.repartition(1).map(lambda row:trans_to_csv(row,test_header)).saveAsTextFile(res_dir+file_name+'.res')
                             res_join.repartition(1).write.json(res_dir+file_name+'.res','overwrite')
+                            res_join.toPandas().to_csv(path_or_buf=res_dir_local + file_name + '.res.csv',
+                                                     sep=',', encoding='utf8', index=False)
                             logger.info('test: result output, %s' % file_name)
                             cmd2 = 'hdfs dfs -mv '+data_dir+file_name+ ' '+back_dir+file_name+'.back'
                             try:
                                 subprocess.check_output(cmd2.split(),shell=False)#shell=True for win 7
                             except:
-                                logger.info('cmd2 error')
+                                logger.info('cmd2 hdfs dfs -mv error, %s' % file_name)
                             else:
                                 logger.info('test: rename origin .csv file to .back, %s' % file_name)
                                 time.sleep(2)
