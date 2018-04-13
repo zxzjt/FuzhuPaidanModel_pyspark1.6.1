@@ -588,7 +588,7 @@ if __name__ == "__main__":
                             # trans_to_csv
                             #res.rdd.repartition(1).map(lambda row:trans_to_csv(row,test_header)).saveAsTextFile(res_dir+file_name+'.res')
                             res_join.repartition(1).write.json(res_dir+file_name+'.res','overwrite')
-                            res_join.toPandas().to_csv(path_or_buf=res_dir_local + file_name + '.res.csv',
+                            res_join.repartition(1).toPandas().to_csv(path_or_buf=res_dir_local + file_name + '.res.csv',
                                                      sep=',', encoding='utf8', index=False)
                             logger.info('test: result output, %s' % file_name)
                             cmd2 = 'hdfs dfs -mv '+data_dir+file_name+ ' '+back_dir+file_name+'.back'
