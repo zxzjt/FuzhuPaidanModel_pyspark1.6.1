@@ -472,6 +472,7 @@ if __name__ == "__main__":
     logger = logging.getLogger("ZiyuLogging")
     # 创建sc
     sc = SparkContext(appName="FuzhuPaidan")
+    sc.setLogLevel('WARN')
     train_all = sc.textFile(home_path+'train.csv',use_unicode=True).map(lambda line: line.split(","))
     logger.info('train: sc.textFile')
     train_header = train_all.collect()[0]
