@@ -1,6 +1,6 @@
 #! /use/bin/python
 # coding: utf8
-import logging,sys,os
+import logging,sys,os,ftplib
 import subprocess,time
 import pandas as pd
 
@@ -425,6 +425,40 @@ def create_schema(header):
             data_schema.add(StructField(key.encode('utf8'), StringType(), True))
     return data_schema
 
+class FtpTransmit(object):
+    """ftp传输模块
+    将结果传输到指定ftp目录
+
+    """
+    def __init__(self):
+        self.host = '10.78.138.124'
+        self.username = 'ch_etl'
+        self.password = 'Ch_Etl1543!'
+
+    def ftp_put(self, file_local, file_ftp):
+        """
+        ftp上传
+        :param file_local:本地源文件
+        :param file_ftp:ftp目标文件
+        :return:
+        """
+        logger = logging.getLogger("ZiyuLogging")
+        try:
+            self.f = ftplib.FTP(self.host)  # 实例化FTP对象
+        except:
+            logger.exception("ftp error: cannot reach %s" % self.host)
+        try:
+            self.f.login(self.username, self.password)  # 登录
+        except:
+            logger.exception("ftp error: ftp login when ftp put, %s" % file_local)
+        try:
+            fp = open(file_local, 'r')
+            self.f.storbinary('STOR ' + file_ftp, fp, 1024)
+            fp.close()
+        except:
+            logger.exception("ftp error: ftp storbinary, %s" % file_local)
+        self.f.quit()
+
 if __name__ == "__main__":
     # python 2 重设默认编码
     #reload(sys)
@@ -472,7 +506,9 @@ if __name__ == "__main__":
     # 创建校验
     data_checker = DataChecker()
     nan_fill_data = pre_proc.mean_mode
+    ftp_transer = FtpTransmit()
     # 数据目录
+    ftp_res_dir = '/opt/znyw/result_data/'
     streamsets_dir = '/user/rc_znpd/zxzjt/wenti_data/'
     data_dir = home_path+'test_dir/'
     back_dir = home_path+'back_dir/'
@@ -529,7 +565,7 @@ if __name__ == "__main__":
                     test_header = test_all.first()
                     #logger.info('test: test_header is %s' % test_header)
                     test_rdd = test_all.filter(lambda line: line[0] != test_header[0])
-                    logger.info('test: the fist row of test_rdd is %s' % test_rdd.collect()[0])
+                    #logger.info('test: the fist row of test_rdd is %s' % test_rdd.collect()[0])
                     test_data = sqlContext.createDataFrame(test_rdd,create_schema_test(test_header))
                     logger.info('test: sqlContext.createDataFrame, %s' % file_name)
                     #logger.info('test: columns of test_data are %s' % test_data.columns)
@@ -591,6 +627,9 @@ if __name__ == "__main__":
                             res_join.repartition(1).toPandas().to_csv(path_or_buf=res_dir_local + file_name + '.res.csv',
                                                      sep=',', encoding='utf8', index=False)
                             logger.info('test: result output, %s' % file_name)
+                            time.sleep(3)
+                            ftp_transer.ftp_put(res_dir_local + file_name + '.res.csv',ftp_res_dir + file_name + '.res.csv')
+                            logger.info('test: finish result ftp_put, %s' % file_name)
                             cmd2 = 'hdfs dfs -mv '+data_dir+file_name+ ' '+back_dir+file_name+'.back'
                             try:
                                 subprocess.check_output(cmd2.split(),shell=False)#shell=True for win 7
