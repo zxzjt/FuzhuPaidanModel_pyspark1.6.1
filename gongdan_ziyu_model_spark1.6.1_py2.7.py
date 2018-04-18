@@ -290,7 +290,7 @@ class ZiyuDataPreProc(object):
         num_feats_t_out = [i for i in col_names if i not in DataChecker.keys_num_str] + ['num_feats_t']
         # 统计均值和众数
         self.mean_mode = self.__get_means_mode(data)# name is str type
-        logger.info("ZiyuDataPreProc.data_fit_transform: mean_mode %s" % self.mean_mode)
+        #logger.info("ZiyuDataPreProc.data_fit_transform: mean_mode %s" % self.mean_mode)
         # 数值字段
         num_feats_merger = VectorAssembler(inputCols=DataChecker.keys_num_str,outputCol='num_feats')
         num_merge_data = num_feats_merger.transform(data).select(num_feats_out)
@@ -561,88 +561,92 @@ if __name__ == "__main__":
                     file_name = file.split(b'/')[-1]#.decode('utf-8')
                     logger.info('test: get csv file, %s' % file_name)
                     # test_data = spark.read.csv(path=data_dir + file_name, encoding='gbk', header=True, inferSchema=True)
-                    test_all = sc.textFile(data_dir + file_name,use_unicode=True).map(lambda line: line.split(","))
-                    logger.info('test: sc.textFile, %s' % file_name)
-                    test_header = test_all.first()
-                    #logger.info('test: test_header is %s' % test_header)
-                    test_rdd = test_all.filter(lambda line: line[0] != test_header[0])
-                    #logger.info('test: the fist row of test_rdd is %s' % test_rdd.collect()[0])
-                    test_data = sqlContext.createDataFrame(test_rdd,create_schema_test(test_header))
-                    logger.info('test: sqlContext.createDataFrame, %s' % file_name)
-                    #logger.info('test: columns of test_data are %s' % test_data.columns)
-                    logger.info('test: test_data item_num %s, feature_num %s' % (test_data.count(), len(test_data.columns)))
-                    test_data_ava = test_data.select(DataChecker.id_str+DataChecker.keys_num_str+DataChecker.keys_class_str)
-                    # 添加简单校验规则
-                    data_status = data_checker.data_check(test_data_ava, sqlContext, nan_fill_data)
-                    logger.info('test: data_checker.data_check, %s' % file_name)
-                    if data_status[0] != 0:
-                        logger.info('test: data_status[0] is %s exception, %s' % (str(data_status[0]),file_name))
+                    try:
+                        test_all = sc.textFile(data_dir + file_name,use_unicode=True).map(lambda line: line.split(","))
+                    except:
+                        logger.info('test: sc.textFile error, %s' % file_name)
                     else:
-                        trans_test = pre_proc.data_transform(data_status[1])
-                        if trans_test == []:
-                            logger.info('test: pre_proc.data_transform exception, %s' % file_name)
-                            pass
+                        logger.info('test: sc.textFile, %s' % file_name)
+                        test_header = test_all.first()
+                        #logger.info('test: test_header is %s' % test_header)
+                        test_rdd = test_all.filter(lambda line: line[0] != test_header[0])
+                        #logger.info('test: the fist row of test_rdd is %s' % test_rdd.collect()[0])
+                        test_data = sqlContext.createDataFrame(test_rdd,create_schema_test(test_header))
+                        logger.info('test: sqlContext.createDataFrame, %s' % file_name)
+                        #logger.info('test: columns of test_data are %s' % test_data.columns)
+                        logger.info('test: test_data item_num %s, feature_num %s' % (test_data.count(), len(test_data.columns)))
+                        test_data_ava = test_data.select(DataChecker.id_str+DataChecker.keys_num_str+DataChecker.keys_class_str)
+                        # 添加简单校验规则
+                        data_status = data_checker.data_check(test_data_ava, sqlContext, nan_fill_data)
+                        logger.info('test: data_checker.data_check, %s' % file_name)
+                        if data_status[0] != 0:
+                            logger.info('test: data_status[0] is %s exception, %s' % (str(data_status[0]),file_name))
                         else:
-                            """
-                            # use mllib
-                            trans_test_label_point = trans_test.rdd.map(lambda row: row['features'])
-                            logger.info('test: generate trans_test_label_point, %s' % file_name)
-                            predicter_collect = model_load.predict(trans_test_label_point).collect()
-                            logger.info('test: model_load.predict, %s' % file_name)
-                            test_data_collect = test_data.collect()
-                            test_data_cols = test_data.columns
-                            for i in range(test_data.count()):
-                                test_data_collect_i = test_data_collect[i]
-                                row = [test_data_collect_i[key] for key in test_data_cols]
-                                row.append(predicter_collect[i])
-                                res_list.append(row)
-                            res_df = sqlContext.createDataFrame(res_list,test_data_cols+["prediction"])
-                            logger.info('test: test_data append prediction column , %s' % file_name)
-                            labelConverter = IndexToString(inputCol="prediction", outputCol="predictedLabel",labels=pre_proc.encoder4_model.labels)
-                            res = labelConverter.transform(res_df)
-                            """
-
-                            # use ml
-                            predicter = model_load.transform(trans_test)
-                            logger.info('test: model_load.transform, %s' % file_name)
-                            labelConverter = IndexToString(inputCol="prediction", outputCol="predictedLabel",labels=pre_proc.encoder4_model.labels)
-                            res_rdd = labelConverter.transform(predicter).select(DataChecker.id_str+["prediction", "predictedLabel", 'probability']).map(lambda row:[row[DataChecker.id_str[0]],row["prediction"],row["predictedLabel"],float(row['probability'][1])])
-                            res= sqlContext.createDataFrame(res_rdd,StructType([StructField(DataChecker.id_str[0],StringType(),True),StructField("prediction",DoubleType(),True),
-                                                                               StructField("predictedLabel",StringType(),True), StructField('probability',DoubleType(),True)]))
-                            #res.limit(5).show()
-                            logger.info('test: prediction column IndexToString, %s' % file_name)
-                            logger.info('test: prediction column IndexToString labels, %s' % pre_proc.encoder4_model.labels)
-                            #logger.info('test: columns of res are %s' % res.columns)
-                            logger.info('test: res item_num %s, feature_num %s' % (res.count(),len(res.columns)))
-                            join_columns = [test_data[key] for key in test_data.columns]+[res["prediction"],res["predictedLabel"],res["probability"]]
-                            res_join = test_data.join(res,test_data[DataChecker.id_str[0]]==res[DataChecker.id_str[0]],'left_outer').select(join_columns)
-                            #logger.info('test: columns of res_join are %s' % res_join.columns)
-                            logger.info('test: res_join item_num %s, feature_num %s' % (res_join.count(), len(res_join.columns)))
-                            #res_join.limit(5).show()
-                            # 使用spark写parquet文件
-                            #res_named = res.withColumnRenamed('问题归类(一级)', '问题归类_一级').withColumnRenamed('问题归类(二级)', '问题归类_二级').withColumnRenamed('日均流量(GB)', '日均流量_GB')
-                            #res_named.write.parquet(path=res_dir+file_name+'.res',mode='overwrite')
-                            # trans_to_csv
-                            #res.rdd.repartition(1).map(lambda row:trans_to_csv(row,test_header)).saveAsTextFile(res_dir+file_name+'.res')
-                            res_join.repartition(1).write.json(res_dir+file_name+'.res','overwrite')
-                            res_join.repartition(1).toPandas().to_csv(path_or_buf=res_dir_local + file_name + '.res.csv',
-                                                     sep=',', encoding='utf8', index=False)
-                            logger.info('test: result output, %s' % file_name)
-                            time.sleep(3)
-                            ftp_transer.ftp_put(res_dir_local + file_name + '.res.csv',ftp_res_dir + file_name + '.res.csv')
-                            logger.info('test: finish result ftp_put, %s' % file_name)
-                            cmd2 = 'hdfs dfs -mv '+data_dir+file_name+ ' '+back_dir+file_name+'.back'
-                            try:
-                                subprocess.check_output(cmd2.split(),shell=False)#shell=True for win 7
-                            except:
-                                logger.info('cmd2 hdfs dfs -mv error, %s' % file_name)
+                            trans_test = pre_proc.data_transform(data_status[1])
+                            if trans_test == []:
+                                logger.info('test: pre_proc.data_transform exception, %s' % file_name)
+                                pass
                             else:
-                                logger.info('test: rename origin .csv file to .back, %s' % file_name)
-                                time.sleep(2)
-                    end_time = time.time()
-                    logger.info('predition takes %s s, %s' % (str(end_time-start_time),file_name))
-                            # train_pred = model_load.transform(train_proc).select(['prediction','label']).rdd.map(lambda row:(row['prediction'],row['label']))
-                            # metrics = MulticlassMetrics(train_pred)
-                            # print(metrics.confusionMatrix().toArray())
+                                """
+                                # use mllib
+                                trans_test_label_point = trans_test.rdd.map(lambda row: row['features'])
+                                logger.info('test: generate trans_test_label_point, %s' % file_name)
+                                predicter_collect = model_load.predict(trans_test_label_point).collect()
+                                logger.info('test: model_load.predict, %s' % file_name)
+                                test_data_collect = test_data.collect()
+                                test_data_cols = test_data.columns
+                                for i in range(test_data.count()):
+                                    test_data_collect_i = test_data_collect[i]
+                                    row = [test_data_collect_i[key] for key in test_data_cols]
+                                    row.append(predicter_collect[i])
+                                    res_list.append(row)
+                                res_df = sqlContext.createDataFrame(res_list,test_data_cols+["prediction"])
+                                logger.info('test: test_data append prediction column , %s' % file_name)
+                                labelConverter = IndexToString(inputCol="prediction", outputCol="predictedLabel",labels=pre_proc.encoder4_model.labels)
+                                res = labelConverter.transform(res_df)
+                                """
+
+                                # use ml
+                                predicter = model_load.transform(trans_test)
+                                logger.info('test: model_load.transform, %s' % file_name)
+                                labelConverter = IndexToString(inputCol="prediction", outputCol="predictedLabel",labels=pre_proc.encoder4_model.labels)
+                                res_rdd = labelConverter.transform(predicter).select(DataChecker.id_str+["prediction", "predictedLabel", 'probability']).map(lambda row:[row[DataChecker.id_str[0]],row["prediction"],row["predictedLabel"],float(row['probability'][1])])
+                                res= sqlContext.createDataFrame(res_rdd,StructType([StructField(DataChecker.id_str[0],StringType(),True),StructField("prediction",DoubleType(),True),
+                                                                                   StructField("predictedLabel",StringType(),True), StructField('probability',DoubleType(),True)]))
+                                #res.limit(5).show()
+                                logger.info('test: prediction column IndexToString, %s' % file_name)
+                                logger.info('test: prediction column IndexToString labels, %s' % pre_proc.encoder4_model.labels)
+                                #logger.info('test: columns of res are %s' % res.columns)
+                                logger.info('test: res item_num %s, feature_num %s' % (res.count(),len(res.columns)))
+                                join_columns = [test_data[key] for key in test_data.columns]+[res["prediction"],res["predictedLabel"],res["probability"]]
+                                res_join = test_data.join(res,test_data[DataChecker.id_str[0]]==res[DataChecker.id_str[0]],'left_outer').select(join_columns)
+                                #logger.info('test: columns of res_join are %s' % res_join.columns)
+                                logger.info('test: res_join item_num %s, feature_num %s' % (res_join.count(), len(res_join.columns)))
+                                #res_join.limit(5).show()
+                                # 使用spark写parquet文件
+                                #res_named = res.withColumnRenamed('问题归类(一级)', '问题归类_一级').withColumnRenamed('问题归类(二级)', '问题归类_二级').withColumnRenamed('日均流量(GB)', '日均流量_GB')
+                                #res_named.write.parquet(path=res_dir+file_name+'.res',mode='overwrite')
+                                # trans_to_csv
+                                #res.rdd.repartition(1).map(lambda row:trans_to_csv(row,test_header)).saveAsTextFile(res_dir+file_name+'.res')
+                                res_join.repartition(1).write.json(res_dir+file_name+'.res','overwrite')
+                                res_join.repartition(1).toPandas().to_csv(path_or_buf=res_dir_local + file_name + '.res.csv',
+                                                         sep=',', encoding='utf8', index=False)
+                                logger.info('test: result output, %s' % file_name)
+                                time.sleep(3)
+                                ftp_transer.ftp_put(res_dir_local + file_name + '.res.csv',ftp_res_dir + file_name + '.res.csv')
+                                logger.info('test: finish result ftp_put, %s' % file_name)
+                                cmd2 = 'hdfs dfs -mv '+data_dir+file_name+ ' '+back_dir+file_name+'.back'
+                                try:
+                                    subprocess.check_output(cmd2.split(),shell=False)#shell=True for win 7
+                                except:
+                                    logger.info('cmd2 hdfs dfs -mv error, %s' % file_name)
+                                else:
+                                    logger.info('test: rename origin .csv file to .back, %s' % file_name)
+                                    time.sleep(2)
+                        end_time = time.time()
+                        logger.info('predition takes %s s, %s' % (str(end_time-start_time),file_name))
+                                # train_pred = model_load.transform(train_proc).select(['prediction','label']).rdd.map(lambda row:(row['prediction'],row['label']))
+                                # metrics = MulticlassMetrics(train_pred)
+                                # print(metrics.confusionMatrix().toArray())
                 time.sleep(10)
                 pass
