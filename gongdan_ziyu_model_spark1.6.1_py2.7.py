@@ -635,14 +635,15 @@ if __name__ == "__main__":
                                 time.sleep(3)
                                 ftp_transer.ftp_put(res_dir_local + file_name + '.res.csv',ftp_res_dir + file_name + '.res.csv')
                                 logger.info('test: finish result ftp_put, %s' % file_name)
-                                cmd2 = 'hdfs dfs -mv '+data_dir+file_name+ ' '+back_dir+file_name+'.back'
-                                try:
-                                    subprocess.check_output(cmd2.split(),shell=False)#shell=True for win 7
-                                except:
-                                    logger.info('cmd2 hdfs dfs -mv error, %s' % file_name)
-                                else:
-                                    logger.info('test: rename origin .csv file to .back, %s' % file_name)
-                                    time.sleep(2)
+                    finally:
+                        cmd2 = 'hdfs dfs -mv '+data_dir+file_name+ ' '+back_dir+file_name+'.back'
+                        try:
+                            subprocess.check_output(cmd2.split(),shell=False)#shell=True for win 7
+                        except:
+                            logger.info('cmd2 hdfs dfs -mv error, %s' % file_name)
+                        else:
+                            logger.info('test: rename origin .csv file to .back, %s' % file_name)
+                            time.sleep(2)
                         end_time = time.time()
                         logger.info('predition takes %s s, %s' % (str(end_time-start_time),file_name))
                                 # train_pred = model_load.transform(train_proc).select(['prediction','label']).rdd.map(lambda row:(row['prediction'],row['label']))
