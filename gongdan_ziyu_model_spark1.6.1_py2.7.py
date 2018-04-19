@@ -563,18 +563,18 @@ if __name__ == "__main__":
                     # test_data = spark.read.csv(path=data_dir + file_name, encoding='gbk', header=True, inferSchema=True)
                     try:
                         test_all = sc.textFile(data_dir + file_name,use_unicode=True).map(lambda line: line.split(","))
+                        logger.info('test: sc.textFile, %s' % file_name)
+                        test_header = test_all.first()
+                        # logger.info('test: test_header is %s' % test_header)
+                        test_rdd = test_all.filter(lambda line: line[0] != test_header[0])
+                        # logger.info('test: the fist row of test_rdd is %s' % test_rdd.collect()[0])
+                        test_data = sqlContext.createDataFrame(test_rdd, create_schema_test(test_header))
+                        logger.info('test: sqlContext.createDataFrame, %s' % file_name)
+                        # logger.info('test: columns of test_data are %s' % test_data.columns)
+                        logger.info('test: test_data item_num %s, feature_num %s' % (test_data.count(), len(test_data.columns)))
                     except:
                         logger.info('test: sc.textFile error, %s' % file_name)
                     else:
-                        logger.info('test: sc.textFile, %s' % file_name)
-                        test_header = test_all.first()
-                        #logger.info('test: test_header is %s' % test_header)
-                        test_rdd = test_all.filter(lambda line: line[0] != test_header[0])
-                        #logger.info('test: the fist row of test_rdd is %s' % test_rdd.collect()[0])
-                        test_data = sqlContext.createDataFrame(test_rdd,create_schema_test(test_header))
-                        logger.info('test: sqlContext.createDataFrame, %s' % file_name)
-                        #logger.info('test: columns of test_data are %s' % test_data.columns)
-                        logger.info('test: test_data item_num %s, feature_num %s' % (test_data.count(), len(test_data.columns)))
                         test_data_ava = test_data.select(DataChecker.id_str+DataChecker.keys_num_str+DataChecker.keys_class_str)
                         # 添加简单校验规则
                         data_status = data_checker.data_check(test_data_ava, sqlContext, nan_fill_data)
