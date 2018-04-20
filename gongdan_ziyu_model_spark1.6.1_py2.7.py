@@ -446,18 +446,23 @@ class FtpTransmit(object):
         try:
             self.f = ftplib.FTP(self.host)  # 实例化FTP对象
         except:
-            logger.exception("ftp error: cannot reach %s" % self.host)
-        try:
-            self.f.login(self.username, self.password)  # 登录
-        except:
-            logger.exception("ftp error: ftp login when ftp put, %s" % file_local)
-        try:
-            fp = open(file_local, 'r')
-            self.f.storbinary('STOR ' + file_ftp, fp, 1024)
-            fp.close()
-        except:
-            logger.exception("ftp error: ftp storbinary, %s" % file_local)
-        self.f.quit()
+            logger.info("ftp error: cannot reach %s" % self.host)
+        else:
+            try:
+                self.f.login(self.username, self.password)  # 登录
+            except:
+                logger.info("ftp error: ftp login when ftp put, %s" % file_local)
+            else:
+                try:
+                    fp = open(file_local, 'r')
+                    self.f.storbinary('STOR ' + file_ftp, fp, 1024)
+                    fp.close()
+                except:
+                    logger.info("ftp error: ftp storbinary, %s" % file_local)
+                else:
+                    logger.info("ftp put success, %s" % file_local)
+            finally:
+                self.f.quit()
 
 if __name__ == "__main__":
     # python 2 重设默认编码
@@ -511,17 +516,18 @@ if __name__ == "__main__":
     # 数据目录
     ftp_res_dir = '/opt/znyw/result_data/'
     streamsets_dir = '/user/rc_znpd/zxzjt/wenti_data/'
-    data_dir = home_path+'test_dir/'
+    data_dir = streamsets_dir #home_path+'test_dir/'
     back_dir = home_path+'back_dir/'
     res_dir = home_path+'res/'
     res_dir_local = home_path_local+'res/'
     cmd1 = 'hdfs dfs -ls -R ' + data_dir
-    cmd3 = 'hdfs dfs -ls -R ' + streamsets_dir
+    #cmd3 = 'hdfs dfs -ls -R ' + streamsets_dir
     # 加载模型
     #model_load = RandomForestClassificationModel.load(model_path)
     model_load = model #RandomForestModel.load(sc,model_path)
     logger.info('train: model.load')
     while True:
+        """
         # files transmission
         try:
             files_list_trans = subprocess.check_output(cmd3.split(), shell=False).strip().split(b'\n')
@@ -544,13 +550,14 @@ if __name__ == "__main__":
                         logger.info('test: cmd4 hdfs dfs -mv to .csv, %s' % file_name_trans)
                         time.sleep(2)
                         pass
+        """
         # process test_dir files
         files_list = subprocess.check_output(cmd1.split(),shell=False).strip().split(b'\n')#shell=True for win 7, and '\r\n'
         if len(files_list) == 0:
             time.sleep(2)
             pass
         else:
-            csv_files = [x for x in files_list if x.endswith(b".csv")]
+            csv_files = [x for x in files_list if x.endswith(b".csv_utf8")]
             if len(csv_files) == 0:
                 time.sleep(2)
                 pass
@@ -636,13 +643,19 @@ if __name__ == "__main__":
                                 ftp_transer.ftp_put(res_dir_local + file_name + '.res.csv',ftp_res_dir + file_name + '.res.csv')
                                 logger.info('test: finish result ftp_put, %s' % file_name)
                     finally:
-                        cmd2 = 'hdfs dfs -mv '+data_dir+file_name+ ' '+back_dir+file_name+'.back'
+                        cmd2 = 'hdfs dfs -mv '+data_dir+file_name+ ' '+back_dir+file_name+'.bak'
+                        cmd5 = 'hdfs dfs -rm ' + data_dir + file_name  # + ' '+back_dir+file_name+'.bak'
                         try:
                             subprocess.check_output(cmd2.split(),shell=False)#shell=True for win 7
                         except:
-                            logger.info('cmd2 hdfs dfs -mv error, %s' % file_name)
+                            try:
+                                subprocess.check_output(cmd5.split(), shell=False)
+                            except:
+                                logger.info('cmd2 hdfs dfs -rm error, %s' % file_name)
+                            else:
+                                logger.info('test: hdfs dfs -rm file success, %s' % file_name)
                         else:
-                            logger.info('test: rename origin .csv file to .back, %s' % file_name)
+                            logger.info('test: hdfs dfs -mv file to .bak success, %s' % file_name)
                             time.sleep(2)
                         end_time = time.time()
                         logger.info('predition takes %s s, %s' % (str(end_time-start_time),file_name))
